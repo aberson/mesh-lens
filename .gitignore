@@ -10,3 +10,6 @@ build/
 
 # Ephemeral build-step review artifacts (per-worktree, never committed)
 .build-step/
+
+# Local normalized telemetry store (default CLI output dir; stays local, plan sec. 10)
+.mesh-lens/

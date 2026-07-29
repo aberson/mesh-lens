@@ -141,6 +141,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Produces:** `models.py`, `store.py`, Skill Mesh adapter, `mesh-lens ingest`, provenance record IDs, per-source ingest checkpoints
 - **Done when:** real and fixture invocation rows round-trip; stub and unavailable values remain distinguishable; malformed rows diagnose without aborting siblings; records whose field set exactly matches the pinned eight-field contract carry `producer_schema="skillmesh-v1"` and any other field set lands in the `unknown` cohort, never merged
 - **Depends on:** 1
+- **Status:** DONE (2026-07-29)
 
 <!-- autofix-applied: 2026-07-25 -->
 ### Step 3: Add outcome adapters and correlation keys

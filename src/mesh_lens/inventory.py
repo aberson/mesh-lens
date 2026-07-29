@@ -209,6 +209,17 @@ def audit_producer_fields() -> tuple[FieldAudit, ...]:
     )
 
 
+#: Producer fields that are structurally present in every record but hardcoded to
+#: 0 by the producer on EVERY write path (pass/fail/stub) -- Step 1 verified they
+#: are NEVER a measurement. Single source of truth for "which fields the producer
+#: never measures" (plan sec. 6); derived from the field audit so it cannot drift
+#: from the classifications above. The Step 2 adapter must not report any of these
+#: as a measured value regardless of verdict.
+ALWAYS_ZERO_PRODUCER_FIELDS: frozenset[str] = frozenset(
+    audit.name for audit in audit_producer_fields() if audit.value_signal is ValueSignal.ALWAYS_ZERO
+)
+
+
 # --------------------------------------------------------------------------- #
 # Correlation-key candidates -- the crux of the honest inventory.
 # --------------------------------------------------------------------------- #
