@@ -80,6 +80,22 @@ class JoinStrength(StrEnum):
     NONE = "none"  # no shared key at all
 
 
+class OutcomeClass(StrEnum):
+    """Stable IDs for the five candidate outcome-artifact classes (plan sec. 2).
+
+    ONE source of truth for the class names shared by the Step 3 outcome adapters
+    and the correlation engine, so a class is spelled identically everywhere and a
+    join decision is always looked up against its inventory audit (never
+    re-derived).
+    """
+
+    BUILD_STEP_REPORT = "build-step-report"
+    GH_ISSUE_STATE = "gh-issue-state"
+    GIT_LOG = "git-log"
+    PLAN_STATUS = "plan-status"
+    SKILL_ITERATE_LOG = "skill-iterate-log"
+
+
 @dataclass(frozen=True)
 class FieldAudit:
     """One producer field or cohort dimension, classified with evidence."""
@@ -106,6 +122,7 @@ class CorrelationKeyAudit:
 class OutcomeArtifactAudit:
     """One candidate outcome-artifact class (plan sec. 2, five classes)."""
 
+    class_id: str  # stable :class:`OutcomeClass` value; adapters + correlation key on this
     name: str
     exists: bool
     location: str
@@ -343,6 +360,7 @@ def audit_outcome_artifacts() -> tuple[OutcomeArtifactAudit, ...]:
     """
     return (
         OutcomeArtifactAudit(
+            class_id=OutcomeClass.BUILD_STEP_REPORT.value,
             name=".build-step/<role>-report.md dev/reviewer reports",
             exists=True,
             location="dev/.build-step/ (3 real files) + per-project .build-step/ dirs",
@@ -360,6 +378,7 @@ def audit_outcome_artifacts() -> tuple[OutcomeArtifactAudit, ...]:
             ),
         ),
         OutcomeArtifactAudit(
+            class_id=OutcomeClass.GH_ISSUE_STATE.value,
             name="GitHub issue states",
             exists=True,
             location=(
@@ -376,6 +395,7 @@ def audit_outcome_artifacts() -> tuple[OutcomeArtifactAudit, ...]:
             ),
         ),
         OutcomeArtifactAudit(
+            class_id=OutcomeClass.GIT_LOG.value,
             name="git log of the target repo",
             exists=True,
             location="`git -C <repo> log` of each project repo (mesh-lens = 3 commits, verified)",
@@ -392,6 +412,7 @@ def audit_outcome_artifacts() -> tuple[OutcomeArtifactAudit, ...]:
             ),
         ),
         OutcomeArtifactAudit(
+            class_id=OutcomeClass.PLAN_STATUS.value,
             name="Plan **Status:** DONE / ### Step N markers",
             exists=True,
             location=(
@@ -408,6 +429,7 @@ def audit_outcome_artifacts() -> tuple[OutcomeArtifactAudit, ...]:
             ),
         ),
         OutcomeArtifactAudit(
+            class_id=OutcomeClass.SKILL_ITERATE_LOG.value,
             name="skill-iterate run-logs",
             exists=True,
             location=(
@@ -440,6 +462,17 @@ def build_inventory() -> Inventory:
         cohort_dimensions=audit_cohort_dimensions(),
         outcome_artifacts=audit_outcome_artifacts(),
     )
+
+
+def outcome_audit_by_class(inventory: Inventory) -> dict[str, OutcomeArtifactAudit]:
+    """Index the outcome-artifact audits by their stable ``class_id``.
+
+    Step 3's outcome adapters and correlation engine consult this map to decide
+    whether a class carries a provable (``STRONG_KEY``) join, so the join policy is
+    always read FROM the Step 1 inventory (single source of truth, plan sec. 6) and
+    never re-derived.
+    """
+    return {audit.class_id: audit for audit in inventory.outcome_artifacts}
 
 
 # --------------------------------------------------------------------------- #

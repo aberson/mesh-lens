@@ -152,6 +152,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Produces:** outcome adapters, correlation diagnostics
 - **Done when:** joined fixtures preserve source provenance, ambiguous joins remain unjoined, and missing outcomes are reported rather than inferred
 - **Depends on:** 2
+- **Status:** DONE (2026-07-29)
 
 ### Step 4: Build aggregate reports
 - **Problem:** Report counts, latency, tokens/cost where measured, pass/fail/stub, outcomes, retries, and missingness by comparable cohorts.

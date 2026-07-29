@@ -16,11 +16,13 @@ from mesh_lens.inventory import (
     PINNED_PRODUCER_FIELDS,
     Availability,
     JoinStrength,
+    OutcomeClass,
     ValueSignal,
     audit_correlation_keys,
     audit_producer_fields,
     audit_telemetry_stream,
     build_inventory,
+    outcome_audit_by_class,
 )
 
 # --------------------------------------------------------------------------- #
@@ -117,6 +119,14 @@ def test_outcome_class_split_is_three_ambiguous_two_absent() -> None:
     absent = [a for a in artifacts if a.availability is Availability.ABSENT]
     assert len(ambiguous) == 3
     assert len(absent) == 2
+
+
+def test_outcome_audit_by_class_indexes_all_five_stable_ids() -> None:
+    """Step 3 keys its adapters/correlation on these stable ids (single source)."""
+    by_class = outcome_audit_by_class(build_inventory())
+    assert set(by_class) == {c.value for c in OutcomeClass}
+    # No real class is strong-keyed -> Step 3 joins nothing on real data.
+    assert all(a.join_strength is not JoinStrength.STRONG_KEY for a in by_class.values())
 
 
 # --------------------------------------------------------------------------- #
