@@ -90,6 +90,18 @@ def skill_iterate_sample() -> Path:
 
 
 @pytest.fixture
+def analyze_golden_stream() -> Path:
+    """Synthetic dispatch stream with KNOWN records -> KNOWN aggregates (Step 4 golden).
+
+    Five records: three skillmesh-v1 in cohort (plan-init, claude) -- one with a null
+    latency to exercise missingness; one skillmesh-v1 in cohort (repo-sync, gpt-5.5);
+    and one unknown-schema record (an extra ``run_id`` field) sharing the (plan-init,
+    claude) skill+model but which MUST stay in its own incomparable bucket.
+    """
+    return FIXTURES / "analyze_golden.jsonl"
+
+
+@pytest.fixture
 def synthetic_keyed_dispatches() -> Path:
     """Synthetic FUTURE run-keyed dispatch stream (each row carries a run_id)."""
     return FIXTURES / "synthetic_keyed_dispatches.jsonl"

@@ -1,9 +1,10 @@
 """mesh-lens CLI.
 
 Steps 1-2 expose ``inventory`` (the availability audit) and ``ingest`` (normalize
-the Skill Mesh dispatch stream into the local store). ``report`` and ``compare``
-land in later steps (plan sec. 7) and are declared here as explicit "not yet
-built" stubs so the surface is honest rather than silently missing.
+the Skill Mesh dispatch stream into the local store). Step 4 adds ``report`` (the
+single-view aggregate report). ``compare`` (guarded pairwise comparison) lands in
+Step 5 and is declared here as an explicit "not yet built" stub so the surface is
+honest rather than silently missing.
 """
 
 from __future__ import annotations
@@ -12,15 +13,19 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
+from mesh_lens.analyze import analyze_report
+from mesh_lens.correlate import correlate, dispatch_ref
 from mesh_lens.inventory import (
     DEFAULT_TELEMETRY_RELPATH,
+    PRODUCER_SCHEMA_ID,
     Availability,
     audit_telemetry_stream,
     build_inventory,
 )
+from mesh_lens.render import write_report
 from mesh_lens.store import Store
 
-_NOT_YET_BUILT = {"report", "compare"}
+_NOT_YET_BUILT = {"compare"}
 
 
 def _project_root() -> Path:
@@ -40,6 +45,11 @@ def default_telemetry_source() -> Path:
 def default_store_dir() -> Path:
     """Default local normalized-store directory (kept out of git; plan sec. 10)."""
     return _project_root() / ".mesh-lens"
+
+
+def default_report_dir() -> Path:
+    """Default output directory for the rendered report (kept out of git; plan sec. 10)."""
+    return default_store_dir() / "report"
 
 
 def _print_inventory(telemetry_path: Path | None) -> int:
@@ -114,6 +124,46 @@ def _run_ingest(source: Path | None, store_dir: Path) -> int:
     return 0
 
 
+def _run_report(store_dir: Path, out_dir: Path, fmt: str) -> int:
+    store = Store(store_dir)
+    events = store.read_events()
+
+    # Outcomes are UNJOINED on real data (Step-3 inventory): correlate the store's
+    # dispatches against an empty outcome set so the report states outcomes are
+    # unjoined and attaches NONE to a dispatch (never a fabricated outcome/retry).
+    inventory = build_inventory()
+    dispatches = [
+        dispatch_ref(e, inventory) for e in events if e.producer_schema == PRODUCER_SCHEMA_ID
+    ]
+    correlation = correlate(dispatches, [], inventory)
+
+    report = analyze_report(events, correlation)
+    written = write_report(report, out_dir, fmt)
+
+    print("== mesh-lens report ==")
+    print(f"  store: {store_dir}")
+    print(
+        f"  events: {report.total_events} total  "
+        f"({report.comparable_event_count} comparable skillmesh-v1, "
+        f"{report.incomparable_event_count} incomparable unknown)"
+    )
+    print(
+        f"  cohorts: {len(report.comparable_cohorts)} comparable, "
+        f"{len(report.incomparable_cohorts)} incomparable (unknown never merged)"
+    )
+    print(
+        "  tokens_in/tokens_out/cost_usd: unavailable for skillmesh-v1 "
+        "(placeholder; never a fabricated 0). latency_ms: real measured aggregate."
+    )
+    print(
+        f"  outcomes: {'UNJOINED' if report.outcomes.all_unjoined else 'partially joined'} "
+        "-- not attached to any dispatch; no outcome/retry rate computed."
+    )
+    for path in written:
+        print(f"  wrote: {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mesh-lens", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -148,6 +198,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="local normalized-store directory (default: <project-root>/.mesh-lens)",
     )
 
+    rep = sub.add_parser(
+        "report", help="render the single-view aggregate report (static JSON + HTML)"
+    )
+    rep.add_argument(
+        "--store",
+        type=Path,
+        default=None,
+        help="local normalized-store directory to read events from (default: <root>/.mesh-lens)",
+    )
+    rep.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="output directory for report.json/report.html (default: <root>/.mesh-lens/report)",
+    )
+    rep.add_argument(
+        "--format",
+        choices=("json", "html", "both"),
+        default="both",
+        help="which report artifacts to write (default: both)",
+    )
+
     for name in sorted(_NOT_YET_BUILT):
         sub.add_parser(name, help="(not yet built -- lands in a later plan step)")
 
@@ -165,10 +237,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         store_dir = args.store if args.store is not None else default_store_dir()
         return _run_ingest(args.source, store_dir)
 
+    if args.command == "report":
+        store_dir = args.store if args.store is not None else default_store_dir()
+        out_dir = args.out if args.out is not None else default_report_dir()
+        return _run_report(store_dir, out_dir, args.format)
+
     if args.command in _NOT_YET_BUILT:
-        parser.error(
-            f"'{args.command}' is not built yet (plan sec. 7); only 'inventory' is available"
-        )
+        parser.error(f"'{args.command}' is not built yet (plan sec. 7)")
 
     parser.error(f"unknown command: {args.command}")  # pragma: no cover - argparse guards this
     return 2  # pragma: no cover

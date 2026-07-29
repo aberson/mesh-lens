@@ -1,0 +1,5 @@
+{"timestamp":"2026-07-24T10:00:00.0000000Z","skill":"plan-init","model":"claude","tokens_in":42,"tokens_out":7,"latency_ms":99,"cost_usd":0.5,"verdict":"pass","run_id":"r-unknown-1"}
+{"timestamp":"2026-07-24T10:01:00.0000000Z","skill":"plan-init","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":100,"cost_usd":0,"verdict":"pass"}
+{"timestamp":"2026-07-24T10:02:00.0000000Z","skill":"plan-init","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":200,"cost_usd":0,"verdict":"fail"}
+{"timestamp":"2026-07-24T10:03:00.0000000Z","skill":"plan-init","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":null,"cost_usd":0,"verdict":"pass"}
+{"timestamp":"2026-07-24T10:04:00.0000000Z","skill":"repo-sync","model":"gpt-5.5","tokens_in":0,"tokens_out":0,"latency_ms":50,"cost_usd":0,"verdict":"stub"}

@@ -162,6 +162,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Produces:** `analyze.py`, `render.py`, `mesh-lens report`, static HTML/JSON
 - **Done when:** synthetic aggregates reproduce expected values and every displayed metric resolves to source record IDs
 - **Depends on:** 3
+- **Status:** DONE (2026-07-29)
 
 <!-- autofix-applied: 2026-07-25 -->
 ### Step 5: Add guarded pairwise comparison
