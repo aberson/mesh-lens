@@ -130,6 +130,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Produces:** scaffold, `inventory.py`, `docs/telemetry-inventory.md`, frozen source fixtures
 - **Done when:** every proposed metric has a verified source or is explicitly marked unavailable; no producer modification is hidden in this plan
 - **Depends on:** none
+- **Status:** DONE (2026-07-29)
 
 <!-- autofix-applied: 2026-07-25 -->
 ### Step 2: Define normalized schemas and ingest dispatch telemetry

@@ -1,0 +1,2 @@
+{"timestamp":"2026-07-24T15:13:27.1397224Z","skill":"plan-init","model":"gpt-5.6-sol","tokens_in":0,"tokens_out":0,"latency_ms":1730,"cost_usd":0,"verdict":"stub"}
+{"timestamp":"2026-07-24T15:13:44.7766510Z","skill":"plan-init","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":4,"cost_usd":0,"verdict":"stub"}

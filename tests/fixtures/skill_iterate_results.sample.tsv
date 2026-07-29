@@ -1,0 +1,4 @@
+commit	score	status	description	wall_seconds
+baseline	1.000000	baseline	baseline scoring	30.000
+6f28e59	1.000000	keep	drop BPA Step 4/10 historical meta-paragraph	60.000
+d3fc715	1.000000	keep	drop BPA Step 10 forward-reference rationale	45.000
