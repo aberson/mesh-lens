@@ -125,7 +125,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 ### Step 1: Audit existing telemetry and outcome availability
 - **Problem:** Inventory every current producer field and candidate outcome artifact (the five classes pinned in §2), verify paths and semantics from producing code, and classify fields as present, derivable, ambiguous, or absent.
 - **Type:** code
-- **Issue:** #
+- **Issue:** #7
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** scaffold, `inventory.py`, `docs/telemetry-inventory.md`, frozen source fixtures
 - **Done when:** every proposed metric has a verified source or is explicitly marked unavailable; no producer modification is hidden in this plan
@@ -135,7 +135,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 ### Step 2: Define normalized schemas and ingest dispatch telemetry
 - **Problem:** Create versioned invocation/outcome/provenance models and ingest the existing Skill Mesh JSONL without fabricating unavailable values. Each normalized record carries its provenance ID (`<source-relpath>@<line-number>`) and SHA-256 `content_hash`; re-ingest stays idempotent via the per-source byte-offset checkpoint (§6).
 - **Type:** code
-- **Issue:** #
+- **Issue:** #8
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** `models.py`, `store.py`, Skill Mesh adapter, `mesh-lens ingest`, provenance record IDs, per-source ingest checkpoints
 - **Done when:** real and fixture invocation rows round-trip; stub and unavailable values remain distinguishable; malformed rows diagnose without aborting siblings; records whose field set exactly matches the pinned eight-field contract carry `producer_schema="skillmesh-v1"` and any other field set lands in the `unknown` cohort, never merged
@@ -145,7 +145,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 ### Step 3: Add outcome adapters and correlation keys
 - **Problem:** Ingest available test, review, retry, and final-disposition artifacts from the candidate classes pinned in §2, building adapters only for classes with a provable join key, and correlate them only where stable run/session keys prove the relationship. Only fields Step 1 classified present or derivable qualify as correlation keys (§6); timestamp-window joins are ambiguous and stay unjoined.
 - **Type:** code
-- **Issue:** #
+- **Issue:** #9
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** outcome adapters, correlation diagnostics
 - **Done when:** joined fixtures preserve source provenance, ambiguous joins remain unjoined, and missing outcomes are reported rather than inferred
@@ -154,7 +154,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 ### Step 4: Build aggregate reports
 - **Problem:** Report counts, latency, tokens/cost where measured, pass/fail/stub, outcomes, retries, and missingness by comparable cohorts.
 - **Type:** code
-- **Issue:** #
+- **Issue:** #10
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `analyze.py`, `render.py`, `mesh-lens report`, static HTML/JSON
 - **Done when:** synthetic aggregates reproduce expected values and every displayed metric resolves to source record IDs
@@ -164,7 +164,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 ### Step 5: Add guarded pairwise comparison
 - **Problem:** Compare two pinned cohorts with sample-size thresholds, missing-data disclosure, project/task stratification, and correlation-not-causation language.
 - **Type:** code
-- **Issue:** #
+- **Issue:** #11
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** `mesh-lens compare`, comparison fixtures
 - **Done when:** incomparable or undersized cohorts refuse a directional verdict; valid fixtures compute reproducible deltas with caveats
@@ -173,7 +173,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 ### Step 6: Observe one real recurring routing decision
 - **Problem:** Run ingestion and reporting over available historical or newly captured Skill Mesh records and evaluate one predeclared routing question without changing routing. With today's stub-only stream the expected result is an insufficient-evidence verdict citing every contributing stub record — that verdict exercises the full ingest, report, and refusal pipeline and completes this step; the step is cheaply re-runnable after skill-mesh M2 lands real telemetry, and that re-run is non-gating.
 - **Type:** operator
-- **Issue:** #
+- **Issue:** #12
 - **Produces:** operator evidence record only
 - **Done when:** the report identifies whether evidence is sufficient, insufficient, or incomparable and cites every contributing source record; an insufficient-evidence verdict over today's stub-only records satisfies this step (the post-M2 re-run is non-gating)
 - **Depends on:** 5
