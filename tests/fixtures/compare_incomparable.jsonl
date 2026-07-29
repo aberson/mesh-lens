@@ -1,0 +1,10 @@
+{"timestamp":"2026-07-24T11:00:00.0000000Z","skill":"repo-sync","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":100,"cost_usd":0,"verdict":"stub"}
+{"timestamp":"2026-07-24T11:01:00.0000000Z","skill":"repo-sync","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":110,"cost_usd":0,"verdict":"stub"}
+{"timestamp":"2026-07-24T11:02:00.0000000Z","skill":"repo-sync","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":120,"cost_usd":0,"verdict":"stub"}
+{"timestamp":"2026-07-24T11:03:00.0000000Z","skill":"repo-sync","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":130,"cost_usd":0,"verdict":"stub"}
+{"timestamp":"2026-07-24T11:04:00.0000000Z","skill":"repo-sync","model":"claude","tokens_in":0,"tokens_out":0,"latency_ms":140,"cost_usd":0,"verdict":"stub"}
+{"timestamp":"2026-07-24T11:05:00.0000000Z","skill":"repo-sync","model":"gpt-5.5","tokens_in":80,"tokens_out":40,"latency_ms":200,"cost_usd":0.02,"verdict":"pass","run_id":"r-100"}
+{"timestamp":"2026-07-24T11:06:00.0000000Z","skill":"repo-sync","model":"gpt-5.5","tokens_in":80,"tokens_out":40,"latency_ms":210,"cost_usd":0.02,"verdict":"pass","run_id":"r-101"}
+{"timestamp":"2026-07-24T11:07:00.0000000Z","skill":"repo-sync","model":"gpt-5.5","tokens_in":80,"tokens_out":40,"latency_ms":220,"cost_usd":0.02,"verdict":"pass","run_id":"r-102"}
+{"timestamp":"2026-07-24T11:08:00.0000000Z","skill":"repo-sync","model":"gpt-5.5","tokens_in":80,"tokens_out":40,"latency_ms":230,"cost_usd":0.02,"verdict":"pass","run_id":"r-103"}
+{"timestamp":"2026-07-24T11:09:00.0000000Z","skill":"repo-sync","model":"gpt-5.5","tokens_in":80,"tokens_out":40,"latency_ms":240,"cost_usd":0.02,"verdict":"pass","run_id":"r-104"}

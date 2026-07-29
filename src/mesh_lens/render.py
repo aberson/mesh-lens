@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 
 from mesh_lens.analyze import Cohort, MetricAggregate, Report
+from mesh_lens.compare import Comparison, MetricComparison
 
 
 def render_json(report: Report) -> str:
@@ -175,8 +176,133 @@ def render_html(report: Report) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# File writer used by the CLI.
+# Comparison renderers (plan sec. 7 Step 5) -- deterministic; refusal is loud.
 # --------------------------------------------------------------------------- #
+
+
+def render_comparison_json(comparison: Comparison) -> str:
+    """Serialize a guarded comparison to deterministic, sorted JSON (schema_version top)."""
+    return json.dumps(comparison.to_json(), ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+
+
+def _cohort_facts_row(
+    label: str, key_skill: str | None, key_model: str | None, schema: str, version: int, count: int
+) -> str:
+    return (
+        "<tr>"
+        f"<th>cohort {_esc(label)}</th>"
+        f"<td>skill={_esc(key_skill)} &middot; model={_esc(key_model)} &middot; "
+        f"schema={_esc(schema)} v{_esc(version)}</td>"
+        f"<td>N={count}</td>"
+        "</tr>"
+    )
+
+
+def _metric_comparison_row(mc: MetricComparison) -> str:
+    if mc.comparable and mc.direction is not None:
+        cls = "measured"
+        verdict = _esc(mc.direction)
+    else:
+        cls = "unavailable"
+        verdict = "REFUSED &mdash; " + _esc("; ".join(mc.refusal_reasons))
+    decision_tag = ' <span class="tag">decision</span>' if mc.is_decision_metric else ""
+    a_cell = (
+        f"A: {mc.a_status} ({mc.a_measured_count}/{mc.a_total} measured, mean={_esc(mc.a_mean)})"
+    )
+    b_cell = (
+        f"B: {mc.b_status} ({mc.b_measured_count}/{mc.b_total} measured, mean={_esc(mc.b_mean)})"
+    )
+    return (
+        "<tr>"
+        f"<th>{_esc(mc.metric)}{decision_tag}</th>"
+        f"<td>{a_cell}<br>{b_cell}</td>"
+        f'<td class="{cls}">{verdict}</td>'
+        "</tr>"
+    )
+
+
+def render_comparison_html(comparison: Comparison) -> str:
+    """Render a self-contained, deterministic static HTML comparison page.
+
+    A refused comparison shows a loud red REFUSED banner and NO winner; a valid delta is
+    shown only alongside its correlation-not-causation caveats.
+    """
+    a = comparison.cohort_a
+    b = comparison.cohort_b
+
+    if comparison.refused:
+        verdict_banner = (
+            '<div class="banner"><strong class="unavailable">DIRECTIONAL VERDICT REFUSED.</strong> '
+            "No winner is computed. Reasons:</div>"
+            "<ul>" + "".join(f"<li>{_esc(r)}</li>" for r in comparison.refusals) + "</ul>"
+        )
+    else:
+        verdict = comparison.directional_verdict or ""
+        verdict_banner = (
+            '<div class="banner"><strong class="measured">Directional read '
+            f"(decision metric {_esc(comparison.decision_metric)}):</strong> {_esc(verdict)}</div>"
+        )
+
+    cohort_table = (
+        "<table><tr><th>cohort</th><th>stratum</th><th>sample</th></tr>"
+        + _cohort_facts_row(
+            "A", a.key.skill, a.key.model, a.key.producer_schema, a.key.schema_version, a.count
+        )
+        + _cohort_facts_row(
+            "B", b.key.skill, b.key.model, b.key.producer_schema, b.key.schema_version, b.count
+        )
+        + "</table>"
+    )
+
+    metric_rows = "".join(_metric_comparison_row(m) for m in comparison.metrics)
+    caveat_items = "".join(f"<li>{_esc(c)}</li>" for c in comparison.caveats)
+
+    return (
+        "<!doctype html>\n"
+        '<html lang="en"><head><meta charset="utf-8">'
+        "<title>mesh-lens guarded comparison</title>"
+        f"<style>{_STYLE}</style></head><body>"
+        "<h1>mesh-lens guarded pairwise comparison</h1>"
+        '<p class="sub">Two pinned cohorts, compared under sample-size, incomparable-schema, '
+        "confound, and placeholder guards. A comparison the evidence cannot support REFUSES a "
+        "directional verdict rather than fabricating a winner.</p>"
+        f'<div class="banner"><strong>Pre-declared decision metric:</strong> '
+        f"{_esc(comparison.decision_metric)} &middot; "
+        f"<strong>min directional N:</strong> {comparison.min_n} &middot; "
+        f"<strong>contrast:</strong> {_esc(comparison.contrast_dimension or '(none)')}</div>"
+        f"{verdict_banner}"
+        "<h2>Cohorts</h2>"
+        f"{cohort_table}"
+        "<h2>Per-metric comparison (disclosure)</h2>"
+        "<table><tr><th>metric</th><th>samples &amp; means</th><th>verdict</th></tr>"
+        f"{metric_rows}</table>"
+        "<h2>Caveats</h2>"
+        f"<ul>{caveat_items}</ul>"
+        "</body></html>\n"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# File writers used by the CLI.
+# --------------------------------------------------------------------------- #
+
+
+def write_comparison(comparison: Comparison, out_dir: Path, fmt: str = "both") -> list[Path]:
+    """Write the comparison to ``out_dir`` as ``comparison.json`` and/or ``comparison.html``.
+
+    Same deterministic, UTF-8, newline-terminated contract as :func:`write_report`.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    if fmt in ("json", "both"):
+        json_path = out_dir / "comparison.json"
+        json_path.write_text(render_comparison_json(comparison), encoding="utf-8")
+        written.append(json_path)
+    if fmt in ("html", "both"):
+        html_path = out_dir / "comparison.html"
+        html_path.write_text(render_comparison_html(comparison), encoding="utf-8")
+        written.append(html_path)
+    return written
 
 
 def write_report(report: Report, out_dir: Path, fmt: str = "both") -> list[Path]:

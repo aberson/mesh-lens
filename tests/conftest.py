@@ -102,6 +102,30 @@ def analyze_golden_stream() -> Path:
 
 
 @pytest.fixture
+def compare_cohorts_stream() -> Path:
+    """Four sized, comparable skillmesh-v1 cohorts (Step 5 valid/confound/placeholder path).
+
+    20 records, five each in cohorts (repo-sync, claude) lat 100..140 mean 120,
+    (repo-sync, gpt-5.5) lat 200..240 mean 220, (plan-init, claude) lat 300..340 mean 320,
+    and (plan-init, gpt-5.5) lat 400..440 mean 420. token/cost are placeholder (all 0).
+    A single-dimension contrast (model or skill) yields a valid latency delta; a
+    two-dimension pick confounds; cost_usd refuses (placeholder).
+    """
+    return FIXTURES / "compare_cohorts.jsonl"
+
+
+@pytest.fixture
+def compare_incomparable_stream() -> Path:
+    """One skillmesh-v1 cohort (repo-sync, claude) + one unknown-schema cohort.
+
+    The unknown cohort (repo-sync, gpt-5.5) carries an extra ``run_id`` field, so it lands
+    in the ``unknown`` producer_schema bucket and is NEVER comparable -- selecting one of
+    each proves the cross-schema / unknown refusal.
+    """
+    return FIXTURES / "compare_incomparable.jsonl"
+
+
+@pytest.fixture
 def synthetic_keyed_dispatches() -> Path:
     """Synthetic FUTURE run-keyed dispatch stream (each row carries a run_id)."""
     return FIXTURES / "synthetic_keyed_dispatches.jsonl"

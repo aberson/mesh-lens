@@ -1,0 +1,179 @@
+{
+  "absent_confounds": [
+    "project",
+    "task_type"
+  ],
+  "caveats": [
+    "Pre-declared decision metric (defined before looking, plan sec. 6): latency_ms. Only this metric gates a decision.",
+    "CORRELATION, NOT CAUSATION: any delta is an observed association between the 'model' stratification and the metric, never evidence that 'model' CAUSES it.",
+    "Held constant across both cohorts: skill.",
+    "UNOBSERVED CONFOUNDS: project, task_type are ABSENT from the producer contract, so the two cohorts may differ on them; an unobserved project/task mix can fully explain any delta (plan sec. 8).",
+    "Any metric delta other than the decision metric is exploratory disclosure, not a decision driver."
+  ],
+  "cohort_a": {
+    "count": 5,
+    "key": {
+      "comparable": true,
+      "model": "claude",
+      "producer_schema": "skillmesh-v1",
+      "project": null,
+      "schema_version": 1,
+      "skill": "repo-sync",
+      "task_type": null
+    },
+    "record_refs": [
+      "compare_cohorts.jsonl@1",
+      "compare_cohorts.jsonl@2",
+      "compare_cohorts.jsonl@3",
+      "compare_cohorts.jsonl@4",
+      "compare_cohorts.jsonl@5"
+    ]
+  },
+  "cohort_b": {
+    "count": 5,
+    "key": {
+      "comparable": true,
+      "model": "gpt-5.5",
+      "producer_schema": "skillmesh-v1",
+      "project": null,
+      "schema_version": 1,
+      "skill": "repo-sync",
+      "task_type": null
+    },
+    "record_refs": [
+      "compare_cohorts.jsonl@10",
+      "compare_cohorts.jsonl@6",
+      "compare_cohorts.jsonl@7",
+      "compare_cohorts.jsonl@8",
+      "compare_cohorts.jsonl@9"
+    ]
+  },
+  "comparable": true,
+  "contrast_dimension": "model",
+  "decision_metric": "latency_ms",
+  "directional_verdict": "cohort A has the lower measured latency_ms (A mean=120.0, B mean=220.0, delta A-B=-100.0); this is an OBSERVED correlation, never evidence of causation",
+  "held_constant": [
+    "skill"
+  ],
+  "metrics": [
+    {
+      "cohort_a": {
+        "mean": 120.0,
+        "measured_count": 5,
+        "measured_refs": [
+          "compare_cohorts.jsonl@1",
+          "compare_cohorts.jsonl@2",
+          "compare_cohorts.jsonl@3",
+          "compare_cohorts.jsonl@4",
+          "compare_cohorts.jsonl@5"
+        ],
+        "status": "measured",
+        "total": 5
+      },
+      "cohort_b": {
+        "mean": 220.0,
+        "measured_count": 5,
+        "measured_refs": [
+          "compare_cohorts.jsonl@10",
+          "compare_cohorts.jsonl@6",
+          "compare_cohorts.jsonl@7",
+          "compare_cohorts.jsonl@8",
+          "compare_cohorts.jsonl@9"
+        ],
+        "status": "measured",
+        "total": 5
+      },
+      "comparable": true,
+      "delta_a_minus_b": -100.0,
+      "direction": "cohort A has the lower measured latency_ms (A mean=120.0, B mean=220.0, delta A-B=-100.0); this is an OBSERVED correlation, never evidence of causation",
+      "is_decision_metric": true,
+      "metric": "latency_ms",
+      "refusal_reasons": []
+    },
+    {
+      "cohort_a": {
+        "mean": null,
+        "measured_count": 0,
+        "measured_refs": [],
+        "status": "unavailable",
+        "total": 5
+      },
+      "cohort_b": {
+        "mean": null,
+        "measured_count": 0,
+        "measured_refs": [],
+        "status": "unavailable",
+        "total": 5
+      },
+      "comparable": false,
+      "delta_a_minus_b": null,
+      "direction": null,
+      "is_decision_metric": false,
+      "metric": "tokens_in",
+      "refusal_reasons": [
+        "tokens_in is UNAVAILABLE in cohort A (5 placeholder, 0 absent of 5); an unavailable metric is never a directional verdict (never read as 0 or 'equal')",
+        "tokens_in is UNAVAILABLE in cohort B (5 placeholder, 0 absent of 5); an unavailable metric is never a directional verdict (never read as 0 or 'equal')"
+      ]
+    },
+    {
+      "cohort_a": {
+        "mean": null,
+        "measured_count": 0,
+        "measured_refs": [],
+        "status": "unavailable",
+        "total": 5
+      },
+      "cohort_b": {
+        "mean": null,
+        "measured_count": 0,
+        "measured_refs": [],
+        "status": "unavailable",
+        "total": 5
+      },
+      "comparable": false,
+      "delta_a_minus_b": null,
+      "direction": null,
+      "is_decision_metric": false,
+      "metric": "tokens_out",
+      "refusal_reasons": [
+        "tokens_out is UNAVAILABLE in cohort A (5 placeholder, 0 absent of 5); an unavailable metric is never a directional verdict (never read as 0 or 'equal')",
+        "tokens_out is UNAVAILABLE in cohort B (5 placeholder, 0 absent of 5); an unavailable metric is never a directional verdict (never read as 0 or 'equal')"
+      ]
+    },
+    {
+      "cohort_a": {
+        "mean": null,
+        "measured_count": 0,
+        "measured_refs": [],
+        "status": "unavailable",
+        "total": 5
+      },
+      "cohort_b": {
+        "mean": null,
+        "measured_count": 0,
+        "measured_refs": [],
+        "status": "unavailable",
+        "total": 5
+      },
+      "comparable": false,
+      "delta_a_minus_b": null,
+      "direction": null,
+      "is_decision_metric": false,
+      "metric": "cost_usd",
+      "refusal_reasons": [
+        "cost_usd is UNAVAILABLE in cohort A (5 placeholder, 0 absent of 5); an unavailable metric is never a directional verdict (never read as 0 or 'equal')",
+        "cost_usd is UNAVAILABLE in cohort B (5 placeholder, 0 absent of 5); an unavailable metric is never a directional verdict (never read as 0 or 'equal')"
+      ]
+    }
+  ],
+  "min_directional_n": 5,
+  "notes": {
+    "correlation_only": "Any delta is an OBSERVED correlation, never causation; project/task_type are absent from the producer so an unobserved mix may confound it.",
+    "placeholder": "tokens_in/tokens_out/cost_usd are placeholder for skillmesh-v1 and are reported UNAVAILABLE, never 0 or 'equal'; only a metric measured in BOTH cohorts can carry a delta.",
+    "refusal": "A refused comparison computes NO winner. Undersized, incomparable (cross-schema/unknown), or confounded cohorts never yield a directional verdict (plan sec. 6, sec. 8)."
+  },
+  "refusals": [],
+  "refused": false,
+  "report": "mesh-lens guarded pairwise comparison (plan sec. 7 Step 5)",
+  "schema_version": 1
+}

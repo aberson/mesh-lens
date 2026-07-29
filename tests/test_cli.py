@@ -35,13 +35,13 @@ def test_inventory_command_with_real_stream(
     assert "matches pinned contract: True" in out
 
 
-def test_not_yet_built_commands_are_honest(capsys: pytest.CaptureFixture[str]) -> None:
-    # Step 5 'compare' is still a stub; Step 4 'report' is now built (below).
+def test_compare_requires_both_selectors(capsys: pytest.CaptureFixture[str]) -> None:
+    # Step 5 'compare' is now built; bare invocation errors for the required selectors.
     with pytest.raises(SystemExit) as exc:
         main(["compare"])
     assert exc.value.code == 2
     err = capsys.readouterr().err
-    assert "not built yet" in err
+    assert "--a" in err and "--b" in err
 
 
 def test_ingest_command_normalizes_the_real_fixture(
@@ -111,6 +111,101 @@ def test_report_command_on_empty_store_is_graceful(
     out = capsys.readouterr().out
     assert rc == 0
     assert "events: 0 total" in out
+
+
+def test_compare_command_refuses_on_real_data(
+    real_stream: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # End-to-end through the production CLI: the real 2-record stream is undersized,
+    # so the honest compare REFUSES a directional verdict (never fabricates a winner).
+    store_dir = tmp_path / "store"
+    assert main(["ingest", "--source", str(real_stream), "--store", str(store_dir)]) == 0
+    capsys.readouterr()
+
+    rc = main(
+        [
+            "compare",
+            "--store",
+            str(store_dir),
+            "--a",
+            "model=gpt-5.6-sol",
+            "--b",
+            "model=claude",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "VERDICT: REFUSED" in out
+    assert "insufficient sample" in out
+
+
+def test_compare_command_valid_path_writes_artifacts(
+    compare_cohorts_stream: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store_dir = tmp_path / "store"
+    out_dir = tmp_path / "out"
+    assert main(["ingest", "--source", str(compare_cohorts_stream), "--store", str(store_dir)]) == 0
+    capsys.readouterr()
+
+    rc = main(
+        [
+            "compare",
+            "--store",
+            str(store_dir),
+            "--a",
+            "skill=repo-sync,model=claude",
+            "--b",
+            "skill=repo-sync,model=gpt-5.5",
+            "--out",
+            str(out_dir),
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "cohort A has the lower measured latency_ms" in out
+    assert "CORRELATION, NOT CAUSATION" in out
+    assert (out_dir / "comparison.json").exists()
+    assert (out_dir / "comparison.html").exists()
+    obj = json.loads((out_dir / "comparison.json").read_text(encoding="utf-8"))
+    assert obj["refused"] is False
+    assert obj["metrics"]
+
+
+def test_compare_command_placeholder_metric_refuses(
+    compare_cohorts_stream: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store_dir = tmp_path / "store"
+    main(["ingest", "--source", str(compare_cohorts_stream), "--store", str(store_dir)])
+    capsys.readouterr()
+    rc = main(
+        [
+            "compare",
+            "--store",
+            str(store_dir),
+            "--a",
+            "skill=repo-sync,model=claude",
+            "--b",
+            "skill=repo-sync,model=gpt-5.5",
+            "--metric",
+            "cost_usd",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "VERDICT: REFUSED" in out
+    assert "UNAVAILABLE" in out
+
+
+def test_compare_command_bad_selector_is_graceful(
+    compare_cohorts_stream: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store_dir = tmp_path / "store"
+    main(["ingest", "--source", str(compare_cohorts_stream), "--store", str(store_dir)])
+    capsys.readouterr()
+    rc = main(["compare", "--store", str(store_dir), "--a", "skill=nope", "--b", "model=claude"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "compare error" in out
 
 
 def test_no_command_errors(capsys: pytest.CaptureFixture[str]) -> None:

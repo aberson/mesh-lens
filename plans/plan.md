@@ -173,6 +173,7 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Produces:** `mesh-lens compare`, comparison fixtures
 - **Done when:** incomparable or undersized cohorts refuse a directional verdict; valid fixtures compute reproducible deltas with caveats
 - **Depends on:** 4
+- **Status:** DONE (2026-07-29)
 
 ### Step 6: Observe one real recurring routing decision
 - **Problem:** Run ingestion and reporting over available historical or newly captured Skill Mesh records and evaluate one predeclared routing question without changing routing. With today's stub-only stream the expected result is an insufficient-evidence verdict citing every contributing stub record — that verdict exercises the full ingest, report, and refusal pipeline and completes this step; the step is cheaply re-runnable after skill-mesh M2 lands real telemetry, and that re-run is non-gating.
