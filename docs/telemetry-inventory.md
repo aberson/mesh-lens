@@ -13,10 +13,10 @@ producer is a parked, separately-reviewed cross-repo ask (plan §2).
 
 | Source | Path | What it proved |
 |---|---|---|
-| Record writer | `.claude/lib/telemetry/telemetry-writer.ps1` | The exact 8-field record shape (lines 41–50); stub zeroing of tokens/cost (lines 34–39). |
-| Dispatch code | `.claude/lib/skill-router.ps1` | Every `Write-TelemetryInvocation` call hardcodes `TokensIn 0 / TokensOut 0 / CostUsd 0.0` (lines 580, 587, 609, 613, 640, 644, 665, 671); a `SKILL_ROUTER_SESSION_ID` exists in the router runtime + a *separate* spend-ledger file but is never written into the JSONL. |
+| Record writer | the Skill Mesh telemetry writer | The exact 8-field record shape; stub zeroing of tokens/cost. |
+| Dispatch code | the Skill Mesh router | Every telemetry write hardcodes `TokensIn 0 / TokensOut 0 / CostUsd 0.0`; a session identifier exists in the router runtime but is never written into the JSONL. |
 | Real telemetry stream | `.claude/lib/telemetry/invocations.jsonl` | 2 records at audit time, both `verdict=stub`, both with `tokens_in/out=0`, `cost_usd=0`, nonzero `latency_ms`. Frozen byte-identical at `tests/fixtures/invocations.real.jsonl`. |
-| Producer format contract | `documentation/multi-model/telemetry-schema.md` | Field names/types match reality (with the divergence noted below). |
+| Producer format contract | the Skill Mesh telemetry-schema | Field names/types match reality (with the divergence noted below). |
 
 ## Reality vs. the pinned contract
 
@@ -37,20 +37,20 @@ recorded honestly below rather than presented as a merely-stub limitation.
 
 | Field | Availability | Value signal today | Verified source |
 |---|---|---|---|
-| `timestamp` | PRESENT | real (per-record UTC) | writer:42; both real records |
-| `skill` | PRESENT | real | writer:43; `plan-init` in both |
-| `model` | PRESENT | real | writer:44; `gpt-5.6-sol`, `claude` |
-| `tokens_in` | PRESENT | **always zero — no signal** | writer:45 + router hardcodes 0; both real records 0 |
-| `tokens_out` | PRESENT | **always zero — no signal** | writer:46 + router hardcodes 0; both real records 0 |
-| `latency_ms` | PRESENT | real (Stopwatch) | writer:47; 1730 and 4 in real records |
-| `cost_usd` | PRESENT | **always zero — no signal** | writer:48 + router hardcodes 0; both real records 0 |
-| `verdict` | PRESENT | real (`pass`/`fail`/`stub`) | writer:22,49; both real records `stub` |
+| `timestamp` | PRESENT | real (per-record UTC) | the writer; both real records |
+| `skill` | PRESENT | real | the writer; `plan-init` in both |
+| `model` | PRESENT | real | the writer; `gpt-5.6-sol`, `claude` |
+| `tokens_in` | PRESENT | **always zero — no signal** | the writer + router hardcodes 0; both real records 0 |
+| `tokens_out` | PRESENT | **always zero — no signal** | the writer + router hardcodes 0; both real records 0 |
+| `latency_ms` | PRESENT | real (Stopwatch) | the writer; 1730 and 4 in real records |
+| `cost_usd` | PRESENT | **always zero — no signal** | the writer + router hardcodes 0; both real records 0 |
+| `verdict` | PRESENT | real (`pass`/`fail`/`stub`) | the writer; both real records `stub` |
 
 ## Correlation-key candidates
 
 | Candidate | Availability | Join strength | Verified source |
 |---|---|---|---|
-| run/session/record id | **ABSENT** | none | writer:41–50 writes no id; `SKILL_ROUTER_SESSION_ID` never persisted into the JSONL; neither real record carries an id. |
+| run/session/record id | **ABSENT** | none | the writer emits no id; the router's session identifier is never persisted into the JSONL; neither real record carries an id. |
 | timestamp window | AMBIGUOUS | timestamp-window-only | only per-record time key; dispatches can share a second and stub records are byte-identical (§6) → cannot uniquely attribute. |
 | skill name | AMBIGUOUS | skill-name-only | present but non-unique (both real records = `plan-init`); a cohort key, not a row join. |
 
@@ -76,11 +76,11 @@ strong dispatch-correlatable key, and all five stay unjoined.**
 
 | # | Class | Exists | Record key | Join to dispatch | Availability |
 |---|---|---|---|---|---|
-| 1 | `.build-step/<role>-report.md` dev/reviewer reports | yes (`dev/.build-step/`, per-project dirs) | review-**lens** name + step number; no in-file timestamp/dispatch id (only mtime) | skill-name-only (fuzzy role→skill) | AMBIGUOUS |
+| 1 | developer/reviewer report files | yes (per-project report dirs) | review-**lens** name + step number; no in-file timestamp/dispatch id (only mtime) | skill-name-only (fuzzy role→skill) | AMBIGUOUS |
 | 2 | GitHub issue states | yes (mesh-lens #1–#12 OPEN) | issue number + state; title embeds "Step N", not a skill | none | ABSENT |
 | 3 | `git log` of target repo | yes (mesh-lens: 3 commits) | commit sha + author-date + message (message *sometimes* prefixes the producing skill) | timestamp-window-only | AMBIGUOUS |
 | 4 | Plan `**Status:** DONE` / `### Step N:` markers | yes (6 `### Step N:` headers; **zero real `**Status:** DONE`** markers — the only DONE string is meta-prose) | step number (+ Issue #) | none | ABSENT |
-| 5 | skill-iterate run-logs | yes (`.claude/skills/<name>/evals/results.tsv`, 32 non-empty) | TSV `commit\tscore\tstatus\tdescription\twall_seconds`; key is a git **commit sha**; skill name implicit in dir path; no timestamp column | skill-name-only (via dir) | AMBIGUOUS |
+| 5 | skill-evaluation run-logs | yes (per-skill eval-result TSVs, 32 non-empty) | TSV `commit\tscore\tstatus\tdescription\twall_seconds`; key is a git **commit sha**; skill name implicit in dir path; no timestamp column | skill-name-only (via dir) | AMBIGUOUS |
 
 Split: **3 ambiguous, 2 absent, 0 strong keys.** "Most classes lack a dispatch-correlatable
 key and stay unjoined" (plan §2) is the verified, expected outcome — reported, not papered over.

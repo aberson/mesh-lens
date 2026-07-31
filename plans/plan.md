@@ -1,22 +1,17 @@
 # Seed Plan: mesh-lens
 
-<!-- decisions-applied: 2026-07-26 per dev/docs/plan-reviews/2026-07-25-utility/DECISIONS.md -->
-
 ## 1. What This Feature Does
-
-Proposal: `../../docs/utility-project-proposal.html`
 
 Mesh Lens is a local-first utility project for explicit Skill Mesh telemetry analysis. It normalizes
 skill/model dispatch records and downstream outcome evidence, then reports comparable cohorts by
 skill, model, project, and task type with provenance, missing-data warnings, and sample-size limits.
 It measures routing outcomes but never changes routing.
 
-<!-- autofix-applied: 2026-07-25 -->
 ## 2. Existing Context
 
 - Skill Mesh currently appends one JSON object per dispatch to
-  `../../.claude/lib/telemetry/invocations.jsonl` (UTF-8, no BOM, append-only). Producer format
-  contract: `../../documentation/multi-model/telemetry-schema.md` — cited as a file-format
+  `.claude/lib/telemetry/invocations.jsonl` (UTF-8, no BOM, append-only). Producer format
+  contract: the pinned Skill Mesh telemetry-schema — cited as a file-format
   contract, not a build dependency. Full producer record shape (all eight fields):
 
   `SkillMeshInvocation` shape:
@@ -39,16 +34,15 @@ It measures routing outcomes but never changes routing.
 - Candidate outcome-artifact classes (Step 1 classifies each as present, derivable, ambiguous, or
   absent; Step 3 builds adapters only for classes with a provable join key — "most classes lack a
   dispatch-correlatable key and stay unjoined" is a valid, expected inventory outcome):
-  1. `../../.build-step/<role>-report.md` dev/reviewer reports (verified present at the workspace root)
+  1. developer/reviewer report files
   2. GitHub issue states via `gh issue list --json number,title,state` per project repo
   3. `git log` of the target repo
   4. Plan `**Status:** DONE` / `### Step N:` markers in canonical plans
-  5. skill-iterate run-logs
+  5. skill-evaluation run-logs
 - Parked (non-gating): a follow-up ask for Skill Mesh to emit a native `schema_version` field — a
   separately reviewed cross-repository plan. V1 infers producer schema instead (see §6).
-- The approved seed is `../../docs/seeds/seed_mesh_lens.md`.
-- Mesh Lens is the explicit analytics owner. Skill Mesh remains the producer; Dev Observatory is at
-  most an optional renderer of already-produced summaries.
+- Mesh Lens is the explicit analytics owner. Skill Mesh remains the producer; an external dashboard
+  is at most an optional renderer of already-produced summaries.
 
 ## 3. Scope
 
@@ -64,9 +58,8 @@ values, external telemetry, daemon collection, and cross-project comparisons wit
 | File | Change Type | Reason | Verified |
 |---|---|---|---|
 | `plans/plan.md` | add | Canonical project plan | New project |
-| `../../documentation/multi-model/telemetry-schema.md` | read-only input | Current Skill Mesh producer format contract | Read directly; eight fields confirmed |
-| `../../.claude/lib/telemetry/invocations.jsonl` | read-only input | Existing invocation stream | Path confirmed by producer documentation |
-| `../../docs/seeds/seed_mesh_lens.md` | read-only input | Approved seed | Read directly |
+| Skill Mesh telemetry-schema | read-only input | Current Skill Mesh producer format contract | Read directly; eight fields confirmed |
+| `.claude/lib/telemetry/invocations.jsonl` | read-only input | Existing invocation stream | Path confirmed by producer documentation |
 
 V1 adapters do not change producer schemas. Any later producer extension requires a separately
 reviewed cross-repository plan.
@@ -132,7 +125,6 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Depends on:** none
 - **Status:** DONE (2026-07-29)
 
-<!-- autofix-applied: 2026-07-25 -->
 ### Step 2: Define normalized schemas and ingest dispatch telemetry
 - **Problem:** Create versioned invocation/outcome/provenance models and ingest the existing Skill Mesh JSONL without fabricating unavailable values. Each normalized record carries its provenance ID (`<source-relpath>@<line-number>`) and SHA-256 `content_hash`; re-ingest stays idempotent via the per-source byte-offset checkpoint (§6).
 - **Type:** code
@@ -143,7 +135,6 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Depends on:** 1
 - **Status:** DONE (2026-07-29)
 
-<!-- autofix-applied: 2026-07-25 -->
 ### Step 3: Add outcome adapters and correlation keys
 - **Problem:** Ingest available test, review, retry, and final-disposition artifacts from the candidate classes pinned in §2, building adapters only for classes with a provable join key, and correlate them only where stable run/session keys prove the relationship. Only fields Step 1 classified present or derivable qualify as correlation keys (§6); timestamp-window joins are ambiguous and stay unjoined.
 - **Type:** code
@@ -164,7 +155,6 @@ adapters bind the same way; an absent artifact class is reported as missing, not
 - **Depends on:** 3
 - **Status:** DONE (2026-07-29)
 
-<!-- autofix-applied: 2026-07-25 -->
 ### Step 5: Add guarded pairwise comparison
 - **Problem:** Compare two pinned cohorts with sample-size thresholds, missing-data disclosure, project/task stratification, and correlation-not-causation language.
 - **Type:** code
