@@ -53,6 +53,8 @@ platform-specific helper and reports launch failure rather than silently swallow
 ## 7. Build Steps
 
 ### Step 7: Skill list/detail aggregates
+- **Status:** DONE (2026-08-09; aggregate provenance and unavailable-metric
+  behavior verified by focused and full automated checks)
 - **Problem:** Add versioned JSON summaries and details grouped by skill with model mix, recent
   events, metric availability, outcome coverage, and provenance.
 - **Type:** code
@@ -65,6 +67,8 @@ platform-specific helper and reports launch failure rather than silently swallow
 - **Depends on:** 5
 
 ### Step 8: Browser report and reliable open
+- **Status:** DONE (2026-08-09; sparse report navigation and visible opener
+  failure behavior verified by focused and full automated checks)
 - **Problem:** Render list/detail HTML and add `browse --open`; make ingest+render one explicit
   command while preserving the existing report/compare verbs.
 - **Type:** code

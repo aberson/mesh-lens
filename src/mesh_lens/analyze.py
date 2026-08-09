@@ -47,10 +47,20 @@ from mesh_lens.models import (
     Metric,
     MetricStatus,
     NormalizedInvocation,
+    SkillEvent,
 )
 
 #: Label used when a record's ``verdict`` field is absent (never a fabricated value).
 MISSING_VERDICT = "(unavailable)"
+
+#: Version of the read-only skill list/detail JSON surface (plan sec. 7 Step 7).
+SKILL_SURFACE_SCHEMA_VERSION = 1
+
+#: A visible bucket for records whose producer omitted a skill name.
+MISSING_SKILL = "(unavailable)"
+
+#: Detail views expose a bounded, newest-first event sample instead of an unbounded log.
+RECENT_SKILL_EVENT_LIMIT = 20
 
 
 # --------------------------------------------------------------------------- #
@@ -493,4 +503,251 @@ def analyze_report(
         absent_dimensions=absent_dimensions,
         placeholder_fields=tuple(sorted(ALWAYS_ZERO_PRODUCER_FIELDS)),
         outcomes=_outcome_summary(correlation),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Skill list/detail -- versioned JSON read models for Step 7.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SkillModelGroup:
+    """One skill/model/schema stratum with provenance-backed aggregates.
+
+    The producer schema and its version intentionally stay in this key.  A skill's
+    list/detail page may show several model groups, but it NEVER computes a numeric
+    aggregate across model or schema boundaries.  In particular, an ``unknown``
+    record can be visible beside a ``skillmesh-v1`` record without contaminating its
+    placeholder-aware aggregates.
+    """
+
+    producer_schema: str
+    schema_version: int
+    model: str | None
+    invocation_count: int
+    record_refs: tuple[str, ...]
+    latency: MetricAggregate
+    tokens_in: MetricAggregate
+    tokens_out: MetricAggregate
+    cost_usd: MetricAggregate
+    verdicts: VerdictBreakdown
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "producer_schema": self.producer_schema,
+            "schema_version": self.schema_version,
+            "model": self.model,
+            "invocation_count": self.invocation_count,
+            "record_refs": list(self.record_refs),
+            "latency_ms": self.latency.to_json(),
+            "tokens_in": self.tokens_in.to_json(),
+            "tokens_out": self.tokens_out.to_json(),
+            "cost_usd": self.cost_usd.to_json(),
+            "verdicts": self.verdicts.to_json(),
+        }
+
+
+def _skill_model_group(records: Sequence[NormalizedInvocation]) -> SkillModelGroup:
+    """Create one already-stratified group; its numeric values remain measured-only."""
+    if not records:
+        raise ValueError("a skill model group requires at least one record")
+
+    first = records[0]
+    return SkillModelGroup(
+        producer_schema=first.producer_schema,
+        schema_version=first.schema_version,
+        model=first.model,
+        invocation_count=len(records),
+        record_refs=tuple(sorted(record.provenance.ref for record in records)),
+        latency=_aggregate("latency_ms", _latency_samples(records)),
+        tokens_in=_aggregate("tokens_in", _metric_samples(records, "tokens_in")),
+        tokens_out=_aggregate("tokens_out", _metric_samples(records, "tokens_out")),
+        cost_usd=_aggregate("cost_usd", _metric_samples(records, "cost_usd")),
+        verdicts=_verdict_breakdown(records),
+    )
+
+
+@dataclass(frozen=True)
+class SkillSummary:
+    """The stable list projection for one skill, with model/schema strata intact."""
+
+    schema_version: int
+    skill: str
+    invocation_count: int
+    record_refs: tuple[str, ...]
+    model_mix: tuple[SkillModelGroup, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "skill": self.skill,
+            "invocation_count": self.invocation_count,
+            "record_refs": list(self.record_refs),
+            "model_mix": [group.to_json() for group in self.model_mix],
+        }
+
+
+@dataclass(frozen=True)
+class SkillOutcomeCoverage:
+    """Outcome evidence attributable to one skill only when a join proves it."""
+
+    status: str
+    joined_count: int | None
+    joins: tuple[tuple[str, str, str], ...]
+    note: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "joined_count": self.joined_count,
+            "joins": [
+                {
+                    "outcome_class": outcome_class,
+                    "dispatch_ref": dispatch_ref,
+                    "outcome_ref": outcome_ref,
+                }
+                for outcome_class, dispatch_ref, outcome_ref in self.joins
+            ],
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
+class SkillDetail:
+    """The stable detail projection: summary, bounded events, and honest outcomes."""
+
+    summary: SkillSummary
+    recent_events: tuple[SkillEvent, ...]
+    outcome_coverage: SkillOutcomeCoverage
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": SKILL_SURFACE_SCHEMA_VERSION,
+            "skill": self.summary.skill,
+            "summary": self.summary.to_json(),
+            "recent_events": [event.to_json() for event in self.recent_events],
+            "outcome_coverage": self.outcome_coverage.to_json(),
+        }
+
+
+def _skill_name(record: NormalizedInvocation) -> str:
+    """Return a visible group label; an absent producer field is never silently dropped."""
+    return record.skill if record.skill is not None else MISSING_SKILL
+
+
+def _model_groups(records: Sequence[NormalizedInvocation]) -> tuple[SkillModelGroup, ...]:
+    groups: dict[tuple[str, int, str | None], list[NormalizedInvocation]] = {}
+    for record in records:
+        key = (record.producer_schema, record.schema_version, record.model)
+        groups.setdefault(key, []).append(record)
+
+    return tuple(
+        _skill_model_group(group_records)
+        for _, group_records in sorted(
+            groups.items(), key=lambda item: (item[0][0], item[0][1], item[0][2] or "")
+        )
+    )
+
+
+def build_skill_summaries(events: Sequence[NormalizedInvocation]) -> tuple[SkillSummary, ...]:
+    """Build deterministic skill list rows without cross-model/schema aggregation."""
+    by_skill: dict[str, list[NormalizedInvocation]] = {}
+    for event in events:
+        by_skill.setdefault(_skill_name(event), []).append(event)
+
+    return tuple(
+        SkillSummary(
+            schema_version=SKILL_SURFACE_SCHEMA_VERSION,
+            skill=skill,
+            invocation_count=len(records),
+            record_refs=tuple(sorted(record.provenance.ref for record in records)),
+            model_mix=_model_groups(records),
+        )
+        for skill, records in sorted(
+            by_skill.items(), key=lambda item: (item[0] == MISSING_SKILL, item[0])
+        )
+    )
+
+
+def _recent_events(records: Sequence[NormalizedInvocation]) -> tuple[SkillEvent, ...]:
+    """Return a bounded, deterministic newest-first event list with full provenance."""
+    sorted_records = sorted(
+        records,
+        key=lambda record: (
+            record.timestamp is not None,
+            record.timestamp or "",
+            record.provenance.ref,
+        ),
+        reverse=True,
+    )
+    return tuple(
+        SkillEvent.from_invocation(record)
+        for record in sorted_records[:RECENT_SKILL_EVENT_LIMIT]
+    )
+
+
+def _outcome_coverage(
+    records: Sequence[NormalizedInvocation], correlation: CorrelationResult | None
+) -> SkillOutcomeCoverage:
+    """Expose only joins whose dispatch provenance belongs to this exact skill."""
+    if correlation is None:
+        return SkillOutcomeCoverage(
+            status="unavailable",
+            joined_count=None,
+            joins=(),
+            note=(
+                "No outcome correlation was supplied, so outcome coverage is unavailable; "
+                "this is not a zero-outcome claim."
+            ),
+        )
+
+    record_refs = {record.provenance.ref for record in records}
+    joins = tuple(
+        sorted(
+            (
+                pair.outcome_class,
+                pair.dispatch_provenance.ref,
+                pair.outcome_provenance.ref,
+            )
+            for pair in correlation.joined
+            if pair.dispatch_provenance.ref in record_refs
+        )
+    )
+    if joins:
+        return SkillOutcomeCoverage(
+            status="measured",
+            joined_count=len(joins),
+            joins=joins,
+            note=(
+                "Outcome coverage includes only provable dispatch/outcome joins; both source "
+                "references are listed for every joined outcome."
+            ),
+        )
+    return SkillOutcomeCoverage(
+        status="unavailable",
+        joined_count=None,
+        joins=(),
+        note=(
+            "No provable outcome join is attributable to this skill. This is not a zero-outcome "
+            "claim; unjoined outcomes remain separate evidence."
+        ),
+    )
+
+
+def build_skill_detail(
+    events: Sequence[NormalizedInvocation],
+    skill: str,
+    correlation: CorrelationResult | None = None,
+) -> SkillDetail | None:
+    """Build one skill detail or ``None`` when the requested visible skill is absent."""
+    records = [event for event in events if _skill_name(event) == skill]
+    if not records:
+        return None
+
+    summary = next(summary for summary in build_skill_summaries(events) if summary.skill == skill)
+    return SkillDetail(
+        summary=summary,
+        recent_events=_recent_events(records),
+        outcome_coverage=_outcome_coverage(records, correlation),
     )

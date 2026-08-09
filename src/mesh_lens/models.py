@@ -175,6 +175,64 @@ class NormalizedInvocation:
 
 
 @dataclass(frozen=True)
+class SkillEvent:
+    """Read-only event DTO for the Step-7 skill list/detail surface.
+
+    It deliberately preserves each normalized field's existing honesty contract:
+    unavailable scalar fields stay ``None`` and token/cost values retain their
+    :class:`Metric` status rather than becoming display-zeroes.  ``provenance`` is
+    carried with every event so a detail view never presents a number or verdict
+    without its source record ID.
+    """
+
+    provenance: Provenance
+    producer_schema: str
+    schema_version: int
+    timestamp: str | None
+    model: str | None
+    verdict: str | None
+    latency_ms: int | None
+    tokens_in: Metric
+    tokens_out: Metric
+    cost_usd: Metric
+
+    @classmethod
+    def from_invocation(cls, invocation: NormalizedInvocation) -> SkillEvent:
+        """Project one normalized invocation without inventing any display value."""
+        return cls(
+            provenance=invocation.provenance,
+            producer_schema=invocation.producer_schema,
+            schema_version=invocation.schema_version,
+            timestamp=invocation.timestamp,
+            model=invocation.model,
+            verdict=invocation.verdict,
+            latency_ms=invocation.latency_ms,
+            tokens_in=invocation.tokens_in,
+            tokens_out=invocation.tokens_out,
+            cost_usd=invocation.cost_usd,
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        """Serialize the event with its full source reference and metric states."""
+        return {
+            "source": self.provenance.to_json(),
+            "source_ref": self.provenance.ref,
+            "producer_schema": self.producer_schema,
+            "schema_version": self.schema_version,
+            "timestamp": self.timestamp,
+            "model": self.model,
+            "verdict": self.verdict,
+            "latency_ms": {
+                "status": "measured" if self.latency_ms is not None else "unavailable",
+                "raw_value": self.latency_ms,
+            },
+            "tokens_in": self.tokens_in.to_json(),
+            "tokens_out": self.tokens_out.to_json(),
+            "cost_usd": self.cost_usd.to_json(),
+        }
+
+
+@dataclass(frozen=True)
 class NormalizedOutcome:
     """Versioned normalized outcome record SHAPE (plan sec. 5).
 

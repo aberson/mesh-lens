@@ -10,17 +10,25 @@ evidence cannot support one (undersized, incomparable, or placeholder-only).
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from mesh_lens.analyze import Report, analyze_report
+from mesh_lens.analyze import (
+    Report,
+    SkillDetail,
+    SkillSummary,
+    analyze_report,
+    build_skill_detail,
+    build_skill_summaries,
+)
 from mesh_lens.compare import (
     CohortSelectionError,
     Comparison,
     compare_cohorts,
     parse_selector,
 )
-from mesh_lens.correlate import correlate, dispatch_ref
+from mesh_lens.correlate import CorrelationResult, correlate, dispatch_ref
 from mesh_lens.inventory import (
     DEFAULT_TELEMETRY_RELPATH,
     PRODUCER_SCHEMA_ID,
@@ -28,7 +36,9 @@ from mesh_lens.inventory import (
     audit_telemetry_stream,
     build_inventory,
 )
-from mesh_lens.render import write_comparison, write_report
+from mesh_lens.models import NormalizedInvocation
+from mesh_lens.open_browser import open_local_file
+from mesh_lens.render import write_comparison, write_report, write_skill_browser
 from mesh_lens.store import Store
 
 
@@ -54,6 +64,11 @@ def default_store_dir() -> Path:
 def default_report_dir() -> Path:
     """Default output directory for the rendered report (kept out of git; plan sec. 10)."""
     return default_store_dir() / "report"
+
+
+def default_browser_dir() -> Path:
+    """Default output directory for the static skill list/detail browser."""
+    return default_store_dir() / "browser"
 
 
 def _print_inventory(telemetry_path: Path | None) -> int:
@@ -128,6 +143,17 @@ def _run_ingest(source: Path | None, store_dir: Path) -> int:
     return 0
 
 
+def _correlate_events(events: Sequence[NormalizedInvocation]) -> CorrelationResult:
+    """Correlate today's dispatch stream without inventing unavailable outcomes."""
+    inventory = build_inventory()
+    dispatches = [
+        dispatch_ref(event, inventory)
+        for event in events
+        if getattr(event, "producer_schema", None) == PRODUCER_SCHEMA_ID
+    ]
+    return correlate(dispatches, [], inventory)
+
+
 def _build_report(store_dir: Path) -> Report:
     """Aggregate the store's events into a :class:`Report` (shared by report + compare).
 
@@ -136,12 +162,7 @@ def _build_report(store_dir: Path) -> Report:
     and attaches NONE to a dispatch (never a fabricated outcome/retry).
     """
     events = Store(store_dir).read_events()
-    inventory = build_inventory()
-    dispatches = [
-        dispatch_ref(e, inventory) for e in events if e.producer_schema == PRODUCER_SCHEMA_ID
-    ]
-    correlation = correlate(dispatches, [], inventory)
-    return analyze_report(events, correlation)
+    return analyze_report(events, _correlate_events(events))
 
 
 def _run_report(store_dir: Path, out_dir: Path, fmt: str) -> int:
@@ -170,6 +191,139 @@ def _run_report(store_dir: Path, out_dir: Path, fmt: str) -> int:
     for path in written:
         print(f"  wrote: {path}")
     return 0
+
+
+def _print_metric_summary(summary: SkillSummary) -> None:
+    """Print model/schema strata with the refs behind every count and aggregate."""
+    for group in summary.model_mix:
+        model = group.model if group.model is not None else "(unavailable)"
+        print(
+            f"    model={model} schema={group.producer_schema} v{group.schema_version} "
+            f"N={group.invocation_count}  [refs: {', '.join(group.record_refs)}]"
+        )
+        for metric_name, aggregate in (
+            ("latency_ms", group.latency),
+            ("tokens_in", group.tokens_in),
+            ("tokens_out", group.tokens_out),
+            ("cost_usd", group.cost_usd),
+        ):
+            measured_refs = ", ".join(aggregate.measured_refs) or "none"
+            print(
+                f"      {metric_name}: {aggregate.summary()} "
+                f"[measured refs: {measured_refs}]"
+            )
+
+
+def _print_skill_list(summaries: Sequence[SkillSummary]) -> None:
+    print("== mesh-lens skills ==")
+    if not summaries:
+        print("  no skill events in the store")
+        return
+    for summary in summaries:
+        print(
+            f"  {summary.skill}: N={summary.invocation_count} "
+            f"[refs: {', '.join(summary.record_refs)}]"
+        )
+        _print_metric_summary(summary)
+
+
+def _print_skill_detail(detail: SkillDetail) -> None:
+    summary = detail.summary
+    print(f"== mesh-lens skill: {summary.skill} ==")
+    print(
+        f"  invocations: N={summary.invocation_count} "
+        f"[refs: {', '.join(summary.record_refs)}]"
+    )
+    _print_metric_summary(summary)
+    print("  recent events (newest first):")
+    for event in detail.recent_events:
+        event_json = event.to_json()
+        print(
+            f"    {event_json['source_ref']}: timestamp={event_json['timestamp']} "
+            f"model={event_json['model']} verdict={event_json['verdict']} "
+            f"latency={event_json['latency_ms']['raw_value']} "
+            f"({event_json['latency_ms']['status']})"
+        )
+    coverage = detail.outcome_coverage
+    if coverage.joined_count is None:
+        print(f"  outcome coverage: unavailable -- {coverage.note}")
+    else:
+        print(f"  outcome coverage: {coverage.joined_count} provable join(s)")
+        for outcome_class, dispatch_ref_, outcome_ref in coverage.joins:
+            print(f"    {outcome_class}: {dispatch_ref_} -> {outcome_ref}")
+
+
+def _print_json(payload: object) -> None:
+    """Print deterministic versioned JSON for tooling without executing any source data."""
+    print(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True))
+
+
+def _run_skills_list(store_dir: Path, json_output: bool) -> int:
+    summaries = build_skill_summaries(Store(store_dir).read_events())
+    if json_output:
+        _print_json(
+            {
+                "schema_version": 1,
+                "skills": [summary.to_json() for summary in summaries],
+            }
+        )
+    else:
+        _print_skill_list(summaries)
+    return 0
+
+
+def _run_skills_show(store_dir: Path, skill: str, json_output: bool) -> int:
+    events = Store(store_dir).read_events()
+    detail = build_skill_detail(events, skill, _correlate_events(events))
+    if detail is None:
+        print(f"skill error: no stored events for {skill!r}")
+        return 2
+    if json_output:
+        _print_json(detail.to_json())
+    else:
+        _print_skill_detail(detail)
+    return 0
+
+
+def _run_browse(
+    source: Path | None,
+    store_dir: Path,
+    out_dir: Path,
+    fmt: str,
+    open_after_render: bool,
+) -> int:
+    """Explicitly ingest, render the skill browser, and optionally open its HTML artifact."""
+    if open_after_render and fmt == "json":
+        print("browse error: --open requires HTML output; use --format html or both")
+        return 2
+
+    # Deliberately reuse the ingest command path so checkpointing, malformed-row
+    # diagnostics, and schema separation remain identical to an explicit ingest.
+    _run_ingest(source, store_dir)
+    events = Store(store_dir).read_events()
+    correlation = _correlate_events(events)
+    details: list[SkillDetail] = []
+    for summary in build_skill_summaries(events):
+        detail = build_skill_detail(events, summary.skill, correlation)
+        if detail is not None:  # summary came from these events; protects the CLI seam.
+            details.append(detail)
+    written = write_skill_browser(details, out_dir, fmt)
+
+    print("== mesh-lens browse ==")
+    print(f"  store: {store_dir}")
+    print(f"  skills: {len(details)} (list/detail browser; sparse data stays visible)")
+    for path in written:
+        print(f"  wrote: {path}")
+
+    if not open_after_render:
+        return 0
+
+    result = open_local_file(out_dir / "browser.html")
+    if result.opened:
+        print(f"  opened: {result.uri}")
+        return 0
+    print(f"browse error: could not open {result.uri}: {result.message}")
+    return 2
 
 
 def _print_comparison(comparison: Comparison) -> None:
@@ -333,6 +487,77 @@ def build_parser() -> argparse.ArgumentParser:
         help="which comparison artifacts to write when --out is given (default: both)",
     )
 
+    skills = sub.add_parser(
+        "skills",
+        help="list skill aggregates or show a provenance-backed skill detail",
+    )
+    skills_sub = skills.add_subparsers(dest="skills_command", required=True)
+    skills_list = skills_sub.add_parser("list", help="list per-skill model/schema aggregates")
+    skills_list.add_argument(
+        "--store",
+        type=Path,
+        default=None,
+        help="local normalized-store directory (default: <root>/.mesh-lens)",
+    )
+    skills_list.add_argument(
+        "--json",
+        action="store_true",
+        help="write the versioned JSON list to stdout",
+    )
+    skills_show = skills_sub.add_parser(
+        "show",
+        help="show bounded recent events and honest outcome coverage for one skill",
+    )
+    skills_show.add_argument("skill", help="exact skill identifier shown by 'skills list'")
+    skills_show.add_argument(
+        "--store",
+        type=Path,
+        default=None,
+        help="local normalized-store directory (default: <root>/.mesh-lens)",
+    )
+    skills_show.add_argument(
+        "--json",
+        action="store_true",
+        help="write the versioned JSON detail to stdout",
+    )
+
+    browse = sub.add_parser(
+        "browse",
+        help="ingest then render the static skill list/detail browser",
+    )
+    browse.add_argument(
+        "--source",
+        type=Path,
+        default=None,
+        help=(
+            "telemetry JSONL source to ingest before rendering "
+            f"(default: <dev-root>/{DEFAULT_TELEMETRY_RELPATH})"
+        ),
+    )
+    browse.add_argument(
+        "--store",
+        type=Path,
+        default=None,
+        help="local normalized-store directory (default: <root>/.mesh-lens)",
+    )
+    browse.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="output directory for browser.json/browser.html (default: <root>/.mesh-lens/browser)",
+    )
+    browse.add_argument(
+        "--format",
+        choices=("json", "html", "both"),
+        default="both",
+        help="which browser artifacts to write (default: both)",
+    )
+    browse.add_argument(
+        "--open",
+        action="store_true",
+        help="open browser.html through the platform browser after it is rendered",
+    )
+
     return parser
 
 
@@ -355,6 +580,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "compare":
         store_dir = args.store if args.store is not None else default_store_dir()
         return _run_compare(store_dir, args.a, args.b, args.metric, args.out, args.format)
+
+    if args.command == "skills":
+        store_dir = args.store if args.store is not None else default_store_dir()
+        if args.skills_command == "list":
+            return _run_skills_list(store_dir, args.json)
+        if args.skills_command == "show":
+            return _run_skills_show(store_dir, args.skill, args.json)
+
+    if args.command == "browse":
+        store_dir = args.store if args.store is not None else default_store_dir()
+        out_dir = args.out if args.out is not None else default_browser_dir()
+        return _run_browse(args.source, store_dir, out_dir, args.format, args.open)
 
     parser.error(f"unknown command: {args.command}")  # pragma: no cover - argparse guards this
     return 2  # pragma: no cover

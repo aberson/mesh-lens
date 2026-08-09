@@ -24,6 +24,8 @@ from mesh_lens.analyze import (
     MetricAggregate,
     Report,
     analyze_report,
+    build_skill_detail,
+    build_skill_summaries,
 )
 from mesh_lens.correlate import correlate, dispatch_ref
 from mesh_lens.inventory import PRODUCER_SCHEMA_ID
@@ -294,3 +296,62 @@ def test_measured_metric_aggregate_computes_real_stats() -> None:
     assert lat.maximum == 30
     assert cohort.tokens_in.sum == 30
     assert cohort.tokens_in.mean == 10.0
+
+
+# --------------------------------------------------------------------------- #
+# Step 7 skill-list/detail read models: strata, sources, and no invented outcomes.
+# --------------------------------------------------------------------------- #
+
+
+def _events_from_golden(golden: Path, tmp_path: Path) -> list[NormalizedInvocation]:
+    store = Store(tmp_path / "store")
+    store.ingest_source(golden, source_relpath=GOLDEN_RELPATH)
+    return store.read_events()
+
+
+def test_skill_summary_keeps_unknown_and_skillmesh_metrics_separate(
+    analyze_golden_stream: Path, tmp_path: Path
+) -> None:
+    summaries = build_skill_summaries(_events_from_golden(analyze_golden_stream, tmp_path))
+    plan_init = next(summary for summary in summaries if summary.skill == "plan-init")
+
+    # The list count cites all four input rows, while its numeric aggregates remain
+    # in model/schema strata: the unknown measured tokens cannot turn v1 placeholders
+    # into a measured zero or a cross-schema aggregate.
+    assert plan_init.invocation_count == 4
+    assert plan_init.record_refs == tuple(f"{GOLDEN_RELPATH}@{line}" for line in range(1, 5))
+    assert [(group.producer_schema, group.invocation_count) for group in plan_init.model_mix] == [
+        ("skillmesh-v1", 3),
+        ("unknown", 1),
+    ]
+    v1 = plan_init.model_mix[0]
+    assert v1.tokens_in.status == "unavailable"
+    assert v1.tokens_in.sum is None
+    assert v1.tokens_in.measured_refs == ()
+    unknown = plan_init.model_mix[1]
+    assert unknown.tokens_in.sum == 42
+    assert unknown.tokens_in.measured_refs == (f"{GOLDEN_RELPATH}@1",)
+
+
+def test_skill_detail_carries_recent_event_provenance_and_unavailable_outcomes(
+    analyze_golden_stream: Path, tmp_path: Path
+) -> None:
+    detail = build_skill_detail(
+        _events_from_golden(analyze_golden_stream, tmp_path),
+        "plan-init",
+    )
+    assert detail is not None
+
+    # Source refs accompany every raw display value; the newest-first order is stable.
+    assert [event.provenance.ref for event in detail.recent_events] == [
+        f"{GOLDEN_RELPATH}@4",
+        f"{GOLDEN_RELPATH}@3",
+        f"{GOLDEN_RELPATH}@2",
+        f"{GOLDEN_RELPATH}@1",
+    ]
+    payload = detail.to_json()
+    assert payload["recent_events"][0]["source_ref"] == f"{GOLDEN_RELPATH}@4"
+    assert payload["recent_events"][0]["tokens_in"]["status"] == "placeholder"
+    assert payload["outcome_coverage"]["status"] == "unavailable"
+    assert payload["outcome_coverage"]["joined_count"] is None
+    assert "not a zero-outcome claim" in payload["outcome_coverage"]["note"]

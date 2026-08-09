@@ -11,10 +11,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mesh_lens.analyze import analyze_report
+from mesh_lens.analyze import analyze_report, build_skill_detail, build_skill_summaries
 from mesh_lens.correlate import correlate, dispatch_ref
 from mesh_lens.inventory import PRODUCER_SCHEMA_ID
-from mesh_lens.render import render_html, render_json, write_report
+from mesh_lens.render import (
+    render_html,
+    render_json,
+    render_skill_browser_html,
+    render_skill_browser_json,
+    write_report,
+    write_skill_browser,
+)
 from mesh_lens.store import Store
 
 GOLDEN_RELPATH = "analyze_golden.jsonl"
@@ -136,6 +143,76 @@ def test_html_escapes_values() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Step 8 browser: navigation, sparse evidence, and escaped raw event fields.
+# --------------------------------------------------------------------------- #
+
+
+def _skill_details(golden: Path, tmp_path: Path):
+    store = Store(tmp_path / "store")
+    store.ingest_source(golden, source_relpath=GOLDEN_RELPATH)
+    events = store.read_events()
+    summaries = build_skill_summaries(events)
+    return tuple(
+        detail
+        for summary in summaries
+        if (detail := build_skill_detail(events, summary.skill)) is not None
+    )
+
+
+def test_skill_browser_renders_list_links_details_and_honest_states(
+    analyze_golden_stream: Path, tmp_path: Path
+) -> None:
+    details = _skill_details(analyze_golden_stream, tmp_path)
+    html = render_skill_browser_html(details)
+    payload = json.loads(render_skill_browser_json(details))
+
+    assert '<a href="#skill-1">plan-init</a>' in html
+    assert 'id="skill-1"' in html
+    assert "analyze_golden.jsonl@4" in html  # raw recent event source
+    assert "placeholder: raw 0" in html
+    assert "Outcome coverage unavailable" in html
+    assert "not a zero-outcome claim" in html
+    assert payload["schema_version"] == 1
+    assert payload["skills"][0]["recent_events"][0]["source_ref"] == "analyze_golden.jsonl@4"
+
+
+def test_skill_browser_empty_state_is_not_a_zero_activity_claim() -> None:
+    html = render_skill_browser_html(())
+    assert "No skill events are available" in html
+    assert "not a zero-activity claim" in html
+
+
+def test_skill_browser_escapes_untrusted_event_values() -> None:
+    from mesh_lens.models import (
+        CURRENT_SCHEMA_VERSION,
+        Metric,
+        MetricStatus,
+        NormalizedInvocation,
+        Provenance,
+    )
+
+    record = NormalizedInvocation(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        provenance=Provenance("x.jsonl", 1, "h"),
+        producer_schema=PRODUCER_SCHEMA_ID,
+        timestamp="<script>timestamp</script>",
+        skill="skill",
+        model="<script>model</script>",
+        latency_ms=0,
+        verdict="<script>verdict</script>",
+        tokens_in=Metric(MetricStatus.PLACEHOLDER, 0),
+        tokens_out=Metric(MetricStatus.PLACEHOLDER, 0),
+        cost_usd=Metric(MetricStatus.PLACEHOLDER, 0),
+        raw_field_names=(),
+    )
+    detail = build_skill_detail([record], "skill")
+    assert detail is not None
+    html = render_skill_browser_html((detail,))
+    assert "<script>model</script>" not in html
+    assert "&lt;script&gt;model&lt;/script&gt;" in html
+
+
+# --------------------------------------------------------------------------- #
 # write_report file output.
 # --------------------------------------------------------------------------- #
 
@@ -153,3 +230,15 @@ def test_write_report_respects_format(analyze_golden_stream: Path, tmp_path: Pat
     report = _report(analyze_golden_stream, tmp_path)
     written = write_report(report, tmp_path / "json-only", "json")
     assert [p.name for p in written] == ["report.json"]
+
+
+def test_write_skill_browser_writes_both_files(
+    analyze_golden_stream: Path, tmp_path: Path
+) -> None:
+    details = _skill_details(analyze_golden_stream, tmp_path)
+    out_dir = tmp_path / "browser"
+    written = write_skill_browser(details, out_dir)
+    assert [path.name for path in written] == ["browser.json", "browser.html"]
+    assert (out_dir / "browser.html").read_text(encoding="utf-8") == render_skill_browser_html(
+        details
+    )

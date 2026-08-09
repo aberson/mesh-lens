@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import html
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
-from mesh_lens.analyze import Cohort, MetricAggregate, Report
+from mesh_lens.analyze import Cohort, MetricAggregate, Report, SkillDetail, SkillModelGroup
 from mesh_lens.compare import Comparison, MetricComparison
 
 
@@ -173,6 +174,198 @@ def render_html(report: Report) -> str:
         f"{_outcome_section(report)}"
         "</body></html>\n"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Skill browser renderers (plan sec. 7 Step 8) -- list navigation + all details.
+# --------------------------------------------------------------------------- #
+
+
+def render_skill_browser_json(details: Sequence[SkillDetail]) -> str:
+    """Serialize deterministic, versioned skill details for the static browser."""
+    payload = {
+        "schema_version": 1,
+        "browser": "mesh-lens skill list/detail browser",
+        "skills": [detail.to_json() for detail in details],
+    }
+    return json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+
+
+def _skill_group_verdict_rows(group: SkillModelGroup) -> str:
+    return "".join(
+        "<tr>"
+        f"<th>verdict: {_esc(verdict)}</th>"
+        f"<td>{len(refs)}</td>"
+        f"<td>{_refs_cell(refs)}</td>"
+        "</tr>"
+        for verdict, refs in group.verdicts.entries
+    )
+
+
+def _skill_group_section(group: SkillModelGroup) -> str:
+    """Render one model/schema stratum without cross-group numeric aggregation."""
+    model = group.model if group.model is not None else "(unavailable)"
+    return (
+        '<div class="cohort">'
+        f'<p class="key">model={_esc(model)} &middot; '
+        f"schema={_esc(group.producer_schema)} v{_esc(group.schema_version)} "
+        f'<span class="tag">N={group.invocation_count}</span></p>'
+        "<table>"
+        "<tr><th>metric</th><th>value</th><th>source record ids</th></tr>"
+        f"<tr><th>count</th><td>{group.invocation_count}</td>"
+        f"<td>{_refs_cell(group.record_refs)}</td></tr>"
+        f"{_metric_row('latency_ms', group.latency)}"
+        f"{_metric_row('tokens_in', group.tokens_in)}"
+        f"{_metric_row('tokens_out', group.tokens_out)}"
+        f"{_metric_row('cost_usd', group.cost_usd)}"
+        f"{_skill_group_verdict_rows(group)}"
+        "</table></div>"
+    )
+
+
+def _event_metric_cell(metric: dict[str, object]) -> str:
+    status = _esc(metric["status"])
+    raw_value = metric["raw_value"]
+    if raw_value is None:
+        return f'<span class="unavailable">{status}</span>'
+    if status == "measured":
+        return f'<span class="measured">measured: {_esc(raw_value)}</span>'
+    return f'<span class="unavailable">{status}: raw {_esc(raw_value)}</span>'
+
+
+def _recent_events_section(detail: SkillDetail) -> str:
+    if not detail.recent_events:
+        return "<p>(no events for this skill)</p>"
+
+    rows: list[str] = []
+    for event in detail.recent_events:
+        obj = event.to_json()
+        latency = obj["latency_ms"]
+        assert isinstance(latency, dict)
+        tokens_in = obj["tokens_in"]
+        assert isinstance(tokens_in, dict)
+        tokens_out = obj["tokens_out"]
+        assert isinstance(tokens_out, dict)
+        cost_usd = obj["cost_usd"]
+        assert isinstance(cost_usd, dict)
+        rows.append(
+            "<tr>"
+            f"<td>{_refs_cell((str(obj['source_ref']),))}</td>"
+            f"<td>{_esc(obj['timestamp'])}</td>"
+            f"<td>{_esc(obj['model'])}</td>"
+            f"<td>{_esc(obj['verdict'])}</td>"
+            f"<td>{_event_metric_cell(latency)}</td>"
+            f"<td>{_event_metric_cell(tokens_in)}</td>"
+            f"<td>{_event_metric_cell(tokens_out)}</td>"
+            f"<td>{_event_metric_cell(cost_usd)}</td>"
+            "</tr>"
+        )
+    return (
+        "<table><tr><th>source record id</th><th>timestamp</th><th>model</th>"
+        "<th>verdict</th><th>latency_ms</th><th>tokens_in</th>"
+        "<th>tokens_out</th><th>cost_usd</th></tr>"
+        + "".join(rows)
+        + "</table>"
+    )
+
+
+def _outcome_coverage_section(detail: SkillDetail) -> str:
+    coverage = detail.outcome_coverage
+    if coverage.joined_count is None:
+        return (
+            '<div class="banner"><strong class="unavailable">'
+            "Outcome coverage unavailable.</strong> "
+            f"{_esc(coverage.note)}</div>"
+        )
+    rows = "".join(
+        "<tr>"
+        f"<td>{_esc(outcome_class)}</td>"
+        f"<td>{_refs_cell((dispatch_ref,))}</td>"
+        f"<td>{_refs_cell((outcome_ref,))}</td>"
+        "</tr>"
+        for outcome_class, dispatch_ref, outcome_ref in coverage.joins
+    )
+    return (
+        '<div class="banner"><strong class="measured">Provable outcome coverage:</strong> '
+        f"{coverage.joined_count} joined record(s), each citing both sources. "
+        f"{_esc(coverage.note)}</div>"
+        "<table><tr><th>outcome class</th><th>dispatch source</th>"
+        f"<th>outcome source</th></tr>{rows}</table>"
+    )
+
+
+def _skill_detail_section(detail: SkillDetail, index: int) -> str:
+    summary = detail.summary
+    return (
+        f'<section id="skill-{index}" class="cohort">'
+        f"<h2>{_esc(summary.skill)}</h2>"
+        f"<p><span class=\"tag\">N={summary.invocation_count}</span> "
+        f"{_refs_cell(summary.record_refs)}</p>"
+        "<h3>Model/schema strata (never numerically merged)</h3>"
+        + "".join(_skill_group_section(group) for group in summary.model_mix)
+        + "<h3>Recent events (newest first; raw values retain their measurement state)</h3>"
+        + _recent_events_section(detail)
+        + "<h3>Outcome coverage</h3>"
+        + _outcome_coverage_section(detail)
+        + "</section>"
+    )
+
+
+def render_skill_browser_html(details: Sequence[SkillDetail]) -> str:
+    """Render a self-contained, sparse-safe list/detail browser with escaped values."""
+    if details:
+        navigation = "".join(
+            f'<li><a href="#skill-{index}">{_esc(detail.summary.skill)}</a> '
+            f"(N={detail.summary.invocation_count}; "
+            f"{_refs_cell(detail.summary.record_refs)})</li>"
+            for index, detail in enumerate(details, start=1)
+        )
+        sections = "".join(
+            _skill_detail_section(detail, index) for index, detail in enumerate(details, start=1)
+        )
+        empty_notice = ""
+    else:
+        navigation = "<li>(no skills available)</li>"
+        sections = ""
+        empty_notice = (
+            '<div class="banner"><strong class="unavailable">'
+            "No skill events are available.</strong> "
+            "The telemetry stream may be absent, empty, or not yet ingested. This is not a "
+            "zero-activity claim.</div>"
+        )
+
+    return (
+        "<!doctype html>\n"
+        '<html lang="en"><head><meta charset="utf-8">'
+        "<title>mesh-lens skill browser</title>"
+        f"<style>{_STYLE}</style></head><body>"
+        "<h1>mesh-lens skill browser</h1>"
+        '<p class="sub">Skill-first telemetry list/detail view. Every count and measured aggregate '
+        "cites source record ids; placeholder and unavailable values remain visibly distinct. "
+        "Outcome coverage is shown only for provable joins.</p>"
+        f"{empty_notice}"
+        "<h2>Skills</h2>"
+        f"<ul>{navigation}</ul>"
+        f"{sections}"
+        "</body></html>\n"
+    )
+
+
+def write_skill_browser(
+    details: Sequence[SkillDetail], out_dir: Path, fmt: str = "both"
+) -> list[Path]:
+    """Write deterministic ``browser.json`` and/or ``browser.html`` into ``out_dir``."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    if fmt in ("json", "both"):
+        json_path = out_dir / "browser.json"
+        json_path.write_text(render_skill_browser_json(details), encoding="utf-8")
+        written.append(json_path)
+    if fmt in ("html", "both"):
+        html_path = out_dir / "browser.html"
+        html_path.write_text(render_skill_browser_html(details), encoding="utf-8")
+        written.append(html_path)
+    return written
 
 
 # --------------------------------------------------------------------------- #
