@@ -58,7 +58,7 @@ platform-specific helper and reports launch failure rather than silently swallow
 - **Problem:** Add versioned JSON summaries and details grouped by skill with model mix, recent
   events, metric availability, outcome coverage, and provenance.
 - **Type:** code
-- **Issue:** #
+- **Issue:** #13
 - **Flags:** --reviewers deep --isolation worktree
 - **Files:** `src/mesh_lens/models.py`, `src/mesh_lens/analyze.py`, `src/mesh_lens/cli.py`,
   `tests/test_analyze.py`, `tests/test_cli.py`
@@ -72,7 +72,7 @@ platform-specific helper and reports launch failure rather than silently swallow
 - **Problem:** Render list/detail HTML and add `browse --open`; make ingest+render one explicit
   command while preserving the existing report/compare verbs.
 - **Type:** code
-- **Issue:** #
+- **Issue:** #14
 - **Flags:** --reviewers code --isolation worktree
 - **Files:** `src/mesh_lens/render.py`, `src/mesh_lens/open_browser.py`,
   `src/mesh_lens/cli.py`, `tests/test_render.py`, `tests/test_open_browser.py`, `tests/test_cli.py`
